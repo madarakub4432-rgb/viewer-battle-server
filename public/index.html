@@ -1,0 +1,200 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Viewer Battle Arena</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080b14;color:white;font-family:Arial,sans-serif}
+header{text-align:center;padding:15px;background:#12182a}
+h2{margin:4px;color:#8df7ff}
+p{color:#aab6d0;font-size:13px}
+#status{font-size:12px;color:#ffca68}
+canvas{display:block;width:100%;height:auto;background:#10172a}
+.controls{padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:9px}
+button,input{padding:13px;border:1px solid #354566;border-radius:10px;background:#19233b;color:white;font-size:14px}
+button{font-weight:bold}
+button:active{transform:scale(.97)}
+.join{background:#167e91}
+.like{background:#414958}
+.share{background:#176c49}
+.gold{background:#8a6413}
+#log{padding:10px;font-size:12px;color:#b8c8e8}
+</style>
+</head>
+<body>
+<header>
+<h2>⚔ VIEWER BATTLE ARENA</h2>
+<p>ผู้ชมเข้าร่วม ต่อสู้ และเหลือผู้ชนะเพียงหนึ่งเดียว</p>
+<div id="status">กำลังเชื่อมต่อเซิร์ฟเวอร์...</div>
+</header>
+<canvas id="arena" width="700" height="700"></canvas>
+<div class="controls">
+<input id="name" maxlength="14" placeholder="ชื่อผู้เล่น">
+<button class="join" onclick="joinPlayer()">➕ เข้าร่วมต่อสู้</button>
+<button class="like" onclick="attack('like')">🤍 Like</button>
+<button class="share" onclick="attack('share')">🟢 Share</button>
+<button class="gold" onclick="attack('gold')">🌟 Gold</button>
+<button onclick="resetGame()">🔄 เริ่มเกมใหม่</button>
+</div>
+<div id="log">โหมดทดลอง: ปุ่มด้านบนใช้จำลองเหตุการณ์จากผู้ชม</div>
+<script>
+const canvas=document.getElementById('arena');
+const ctx=canvas.getContext('2d');
+const players=[];
+const shots=[];
+const colors=['#65e8ff','#ff70aa','#a78bfa','#8af59b','#ffd166','#ff8b65','#70a5ff'];
+let nextId=1;
+let lastEvent='';
+let ws;
+
+function connect(){
+ const protocol=location.protocol==='https:'?'wss://':'ws://';
+ try{
+  ws=new WebSocket(protocol+location.host);
+  ws.onopen=()=>document.getElementById('status').textContent='🟢 เชื่อมต่อเซิร์ฟเวอร์แล้ว';
+  ws.onclose=()=>{
+   document.getElementById('status').textContent='🟡 กำลังเชื่อมต่อใหม่...';
+   setTimeout(connect,4000);
+  };
+  ws.onerror=()=>ws.close();
+  ws.onmessage=e=>{
+   try{
+    const d=JSON.parse(e.data);
+    if(d.type==='viewer_join') addPlayer(d.name);
+    if(d.type==='attack') fire(d.name,d.kind);
+   }catch(err){}
+  };
+ }catch(e){}
+}
+connect();
+
+function send(data){
+ if(ws&&ws.readyState===1)ws.send(JSON.stringify(data));
+}
+
+function addPlayer(name){
+ if(players.some(p=>p.name===name))return;
+ if(players.length>=30)return;
+ const a=Math.random()*Math.PI*2;
+ const r=80+Math.random()*210;
+ players.push({
+  id:nextId++,name:name||('Viewer'+nextId),
+  x:350+Math.cos(a)*r,y:350+Math.sin(a)*r,
+  vx:(Math.random()-.5)*2,vy:(Math.random()-.5)*2,
+  hp:100,color:colors[Math.floor(Math.random()*colors.length)],
+  angle:Math.random()*6
+ });
+ log('⚔ '+name+' เข้าร่วมสนาม');
+}
+
+function joinPlayer(){
+ const name=document.getElementById('name').value.trim()||('Viewer'+nextId);
+ if(players.some(p=>p.name===name)){
+  log('ชื่อนี้เข้าร่วมแล้ว');return;
+ }
+ addPlayer(name);
+ send({type:'viewer_join',name});
+}
+
+function attack(kind){
+ if(!players.length){log('เพิ่มผู้เล่นก่อนครับ');return}
+ const name=document.getElementById('name').value.trim();
+ let p=players.find(x=>x.name===name)||players[Math.floor(Math.random()*players.length)];
+ fire(p.name,kind);
+ send({type:'attack',name:p.name,kind});
+}
+
+function fire(name,kind){
+ const p=players.find(x=>x.name===name);
+ if(!p||players.length<2)return;
+ const targets=players.filter(x=>x!==p&&x.hp>0);
+ if(!targets.length)return;
+ const t=targets[Math.floor(Math.random()*targets.length)];
+ const damage=kind==='gold'?45:kind==='share'?22:8;
+ shots.push({
+  x:p.x,y:p.y,tx:t.x,ty:t.y,target:t,
+  color:kind==='gold'?'#ffd34e':kind==='share'?'#47ff91':'#ffffff',
+  damage,life:30,angle:0
+ });
+}
+
+function log(text){
+ document.getElementById('log').textContent=text;
+}
+
+function resetGame(){
+ players.length=0;shots.length=0;nextId=1;
+ lastEvent='';
+ log('เริ่มสนามใหม่แล้ว');
+}
+
+for(let i=0;i<8;i++)addPlayer('Viewer'+(i+1));
+
+function draw(){
+ ctx.clearRect(0,0,700,700);
+ ctx.save();
+ ctx.translate(350,350);
+ for(let r=100;r<=330;r+=55){
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.strokeStyle='#27344f';ctx.lineWidth=2;ctx.stroke();
+ }
+ ctx.restore();
+
+ for(const p of players){
+  if(p.hp<=0)continue;
+  p.x+=p.vx;p.y+=p.vy;
+  p.angle+=.025;
+  if(p.x<30||p.x>670)p.vx*=-1;
+  if(p.y<30||p.y>670)p.vy*=-1;
+  if(Math.random()<.02){p.vx+=(Math.random()-.5)*.5;p.vy+=(Math.random()-.5)*.5}
+  p.vx=Math.max(-1.5,Math.min(1.5,p.vx));
+  p.vy=Math.max(-1.5,Math.min(1.5,p.vy));
+
+  ctx.beginPath();ctx.arc(p.x,p.y,23,0,Math.PI*2);
+  ctx.fillStyle=p.color+'33';ctx.fill();
+  ctx.strokeStyle=p.color;ctx.lineWidth=3;ctx.stroke();
+
+  ctx.beginPath();ctx.arc(p.x,p.y,17,0,Math.PI*2);
+  ctx.fillStyle=p.color;ctx.fill();
+
+  ctx.fillStyle='#111827';ctx.font='bold 15px Arial';
+  ctx.textAlign='center';ctx.fillText('⚔',p.x,p.y+5);
+
+  ctx.fillStyle='#fff';ctx.font='12px Arial';
+  ctx.fillText(p.name.slice(0,14),p.x,p.y-31);
+
+  ctx.fillStyle='#39212d';ctx.fillRect(p.x-22,p.y+29,44,5);
+  ctx.fillStyle='#56ef9b';ctx.fillRect(p.x-22,p.y+29,44*p.hp/100,5);
+ }
+
+ for(let i=shots.length-1;i>=0;i--){
+  const s=shots[i];
+  if(!s.target||s.target.hp<=0){shots.splice(i,1);continue}
+  const dx=s.tx-s.x,dy=s.ty-s.y;
+  const d=Math.hypot(dx,dy)||1;
+  s.x+=dx/d*13;s.y+=dy/d*13;
+  s.angle+=.25;
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.angle);
+  ctx.strokeStyle=s.color;ctx.lineWidth=4;
+  ctx.beginPath();ctx.arc(0,0,10,0,Math.PI*1.6);ctx.stroke();
+  ctx.restore();
+  if(d<15||--s.life<=0){
+   s.target.hp=Math.max(0,s.target.hp-s.damage);
+   shots.splice(i,1);
+   if(s.target.hp===0)log('💥 '+s.target.name+' ออกจากสนาม');
+  }
+ }
+
+ const alive=players.filter(p=>p.hp>0);
+ if(players.length>=2&&alive.length===1&&lastEvent!=='winner'){
+  lastEvent='winner';log('🏆 ผู้ชนะคือ '+alive[0].name+'!');
+ }
+ requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
