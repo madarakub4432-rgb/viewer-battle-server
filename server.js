@@ -8,8 +8,10 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.json());
 
+app.use(express.static("public"));
+
 app.get("/", (req, res) => {
-  res.send("Viewer Battle Server is running!");
+  res.sendFile(__dirname + "/public/index.html");
 });
 
 wss.on("connection", (ws) => {
